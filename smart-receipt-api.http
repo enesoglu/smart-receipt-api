@@ -1,0 +1,6 @@
+@smart_receipt_api_HostAddress = http://localhost:5069
+
+GET {{smart_receipt_api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
