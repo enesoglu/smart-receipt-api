@@ -3,17 +3,15 @@
     public class Receipt
     {
         public int Id { get; set; }
-        public string StoreName { get; set; } = string.Empty;   // store name
-        public DateTime Date { get; set; }                      // receipt date
-        public decimal TotalAmount { get; set; }                // receipt amount
-        public string? ImagePath { get; set; }                  // receipt's image path
+        public string StoreName { get; set; } = string.Empty;
+        public DateTime Date { get; set; }
+        public decimal TotalAmount { get; set; }
+        public string? ImagePath { get; set; }
+        public string? Tags { get; set; }  // CSV format: "Groceries,Organic,Weekly"
 
-
-        // whose receipt is this?
         public int UserId { get; set; }
         public User? User { get; set; }
 
-        // items in the receipt 
-        // public List<ReceiptItem> Items { get; set; } = new List<ReceiptItem>();
+        public List<ReceiptItems> Items { get; set; } = new List<ReceiptItems>();
     }
 }

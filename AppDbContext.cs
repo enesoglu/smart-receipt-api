@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using smart_receipt_api.Models;
 
-namespace smart_receipt_api.Data
+namespace smart_receipt_api
 {
     public class AppDbContext : DbContext
     {
@@ -9,7 +9,7 @@ namespace smart_receipt_api.Data
 
         public DbSet<User> Users { get; set; }
         public DbSet<Receipt> Receipts { get; set; }
-        // public DbSet<ReceiptItem> ReceiptItems { get; set; }
+        public DbSet<ReceiptItems> ReceiptItems { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -19,9 +19,22 @@ namespace smart_receipt_api.Data
                 .HasColumnType("decimal(10,2)");
 
             // price of item 
-            // modelBuilder.Entity<ReceiptItem>()
-            //    .Property(p => p.Price)
-            //    .HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<ReceiptItems>()
+                .Property(p => p.Price)
+                .HasColumnType("decimal(10,2)");
+
+            // Foreign key relationships
+            modelBuilder.Entity<Receipt>()
+                .HasMany(r => r.Items)
+                .WithOne(i => i.Receipt)
+                .HasForeignKey(i => i.ReceiptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Receipt>()
+                .HasOne(r => r.User)
+                .WithMany(u => u.Receipts)
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }
