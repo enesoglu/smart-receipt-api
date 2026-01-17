@@ -7,10 +7,18 @@
         public DateTime Date { get; set; }
         public decimal TotalAmount { get; set; }
         public string? ImagePath { get; set; }
-        public string? Tags { get; set; }  // CSV format: "Groceries,Organic,Weekly"
 
+        // User relationship
         public int UserId { get; set; }
         public User? User { get; set; }
+
+        // Category relationship (optional)
+        public int? CategoryId { get; set; }
+        public Category? Category { get; set; }
+
+        // Store relationship (optional)
+        public int? StoreId { get; set; }
+        public Store? Store { get; set; }
 
         public List<ReceiptItems> Items { get; set; } = new List<ReceiptItems>();
     }

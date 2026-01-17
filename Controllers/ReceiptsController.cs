@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using smart_receipt_api.DTOs;
 using smart_receipt_api.Models;
@@ -76,23 +76,8 @@ namespace smart_receipt_api.Controllers
                 if (userId == 0)
                     return Unauthorized(new ApiResponse<object> { Success = false, Message = "Unauthorized" });
 
-                var receipt = new Receipt
-                {
-                    UserId = userId,
-                    StoreName = request.StoreName,
-                    Date = request.Date,
-                    TotalAmount = request.TotalAmount,
-                    ImagePath = request.ImagePath,
-                    Tags = request.Tags,
-                    Items = request.Items.Select(item => new ReceiptItems
-                    {
-                        ProductName = item.ProductName,
-                        Price = item.Price
-                    }).ToList()
-                };
-
-                var createdReceipt = await _receiptService.CreateReceiptAsync(receipt);
-                return CreatedAtAction(nameof(GetReceipt), new { id = createdReceipt.Id }, 
+                var createdReceipt = await _receiptService.CreateReceiptWithStoreAsync(request, userId);
+                return CreatedAtAction(nameof(GetReceipt), new { id = createdReceipt.Id },
                     new ApiResponse<ReceiptDto> { Success = true, Data = MapToDto(createdReceipt) });
             }
             catch (Exception ex)
@@ -121,7 +106,8 @@ namespace smart_receipt_api.Controllers
                 existingReceipt.Date = request.Date;
                 existingReceipt.TotalAmount = request.TotalAmount;
                 existingReceipt.ImagePath = request.ImagePath;
-                existingReceipt.Tags = request.Tags;
+                existingReceipt.CategoryId = request.CategoryId;
+                existingReceipt.StoreId = request.StoreId;
 
                 // Remove old items
                 existingReceipt.Items.Clear();
@@ -410,7 +396,7 @@ namespace smart_receipt_api.Controllers
         // ===== OCR & IMAGE UPLOAD =====
 
         [HttpPost("scan")]
-        public async Task<ActionResult<ApiResponse<Dictionary<string, string>>>> ScanReceipt(IFormFile image)
+        public async Task<ActionResult<ApiResponse<Dictionary<string, object>>>> ScanReceipt(IFormFile image)
         {
             try
             {
@@ -427,7 +413,29 @@ namespace smart_receipt_api.Controllers
                     });
 
                 var extractedData = await _ocrService.ExtractReceiptDataAsync(image);
-                return Ok(new ApiResponse<Dictionary<string, string>> { Success = true, Data = extractedData });
+
+                // Parse items from OCR text
+                var result = new Dictionary<string, object>();
+                foreach (var kvp in extractedData)
+                {
+                    result[kvp.Key] = kvp.Value;
+                }
+
+                if (extractedData.TryGetValue("rawText", out var rawText))
+                {
+                    var parsedItems = _receiptService.ParseReceiptItems(rawText);
+                    result["items"] = parsedItems.Select(item => new ReceiptItemDto
+                    {
+                        ProductName = item.ProductName,
+                        Price = item.Price,
+                        Quantity = item.Quantity,
+                        UnitPrice = item.UnitPrice,
+                        Barcode = item.Barcode,
+                        Unit = item.Unit
+                    }).ToList();
+                }
+
+                return Ok(new ApiResponse<Dictionary<string, object>> { Success = true, Data = result });
             }
             catch (Exception ex)
             {
@@ -457,12 +465,26 @@ namespace smart_receipt_api.Controllers
                 Date = receipt.Date,
                 TotalAmount = receipt.TotalAmount,
                 ImagePath = receipt.ImagePath,
-                Tags = receipt.Tags,
+                CategoryId = receipt.CategoryId,
+                CategoryName = receipt.Category?.Name,
+                StoreId = receipt.StoreId,
+                Store = receipt.Store != null ? new StoreDto
+                {
+                    Id = receipt.Store.Id,
+                    Name = receipt.Store.Name,
+                    Address = receipt.Store.Address,
+                    Phone = receipt.Store.Phone,
+                    TaxNumber = receipt.Store.TaxNumber
+                } : null,
                 Items = receipt.Items.Select(item => new ReceiptItemDto
                 {
                     Id = item.Id,
                     ProductName = item.ProductName,
-                    Price = item.Price
+                    Price = item.Price,
+                    Quantity = item.Quantity,
+                    UnitPrice = item.UnitPrice,
+                    Barcode = item.Barcode,
+                    Unit = item.Unit
                 }).ToList()
             };
         }

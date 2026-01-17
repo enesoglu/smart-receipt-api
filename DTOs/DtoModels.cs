@@ -29,6 +29,40 @@ namespace smart_receipt_api.DTOs
         public string Token { get; set; } = string.Empty;
     }
 
+    // ===== Category DTOs =====
+    public class CategoryDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string? IconName { get; set; }
+    }
+
+    public class CreateCategoryRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string? IconName { get; set; }
+    }
+
+    // ===== Store DTOs =====
+    public class StoreDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? TaxNumber { get; set; }
+    }
+
+    public class CreateStoreRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? TaxNumber { get; set; }
+    }
+
     // ===== Receipt DTOs =====
     public class CreateReceiptRequest
     {
@@ -36,7 +70,8 @@ namespace smart_receipt_api.DTOs
         public DateTime Date { get; set; }
         public decimal TotalAmount { get; set; }
         public string? ImagePath { get; set; }
-        public string? Tags { get; set; }
+        public int? CategoryId { get; set; }
+        public int? StoreId { get; set; }
         public List<ReceiptItemDto> Items { get; set; } = new List<ReceiptItemDto>();
     }
 
@@ -47,7 +82,8 @@ namespace smart_receipt_api.DTOs
         public DateTime Date { get; set; }
         public decimal TotalAmount { get; set; }
         public string? ImagePath { get; set; }
-        public string? Tags { get; set; }
+        public int? CategoryId { get; set; }
+        public int? StoreId { get; set; }
         public List<ReceiptItemDto> Items { get; set; } = new List<ReceiptItemDto>();
     }
 
@@ -58,7 +94,10 @@ namespace smart_receipt_api.DTOs
         public DateTime Date { get; set; }
         public decimal TotalAmount { get; set; }
         public string? ImagePath { get; set; }
-        public string? Tags { get; set; }
+        public int? CategoryId { get; set; }
+        public string? CategoryName { get; set; }
+        public int? StoreId { get; set; }
+        public StoreDto? Store { get; set; }
         public List<ReceiptItemDto> Items { get; set; } = new List<ReceiptItemDto>();
     }
 
@@ -67,6 +106,10 @@ namespace smart_receipt_api.DTOs
         public int Id { get; set; }
         public string ProductName { get; set; } = string.Empty;
         public decimal Price { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal UnitPrice { get; set; }
+        public string? Barcode { get; set; }
+        public string? Unit { get; set; }
     }
 
     // ===== Dashboard & Statistics DTOs =====
@@ -98,11 +141,20 @@ namespace smart_receipt_api.DTOs
         public decimal TotalSpending { get; set; }
     }
 
+    public class CategorySpendingDto
+    {
+        public int CategoryId { get; set; }
+        public string CategoryName { get; set; } = string.Empty;
+        public decimal TotalSpending { get; set; }
+        public int ReceiptCount { get; set; }
+    }
+
     public class DashboardDto
     {
         public decimal TotalMonthlySpending { get; set; }
         public List<MonthlySpendingDto> MonthlyData { get; set; } = new List<MonthlySpendingDto>();
         public List<StoreSpendingDto> StoreData { get; set; } = new List<StoreSpendingDto>();
+        public List<CategorySpendingDto> CategoryData { get; set; } = new List<CategorySpendingDto>();
     }
 }
 

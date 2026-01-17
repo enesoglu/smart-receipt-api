@@ -70,8 +70,6 @@ namespace smart_receipt_api.Services
                 result["rawText"] = rawText;
                 result["status"] = "success";
 
-                // NOTE: OCR parsing askıya alındı - şu an için sadece ham metin döndürülüyor
-                // İleride buraya fiş ayrıştırma (store name, total, items) eklenecek
                 _logger.LogInformation($"OCR completed. Raw text length: {rawText.Length}");
 
                 return result;
