@@ -74,15 +74,22 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Başlangıçta pending migration'ları otomatik uygula (tablo yoksa oluşturur)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // Disabled for mobile dev (self-signed cert causes fetch to fail)
 
-app.UseCors("AllowWebApp");
+app.UseCors("AllowMobile");
 
 app.UseAuthentication();
 app.UseAuthorization();
