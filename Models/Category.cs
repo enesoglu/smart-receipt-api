@@ -4,10 +4,13 @@ namespace smart_receipt_api.Models
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
-        public string? Description { get; set; }
-        public string? IconName { get; set; }  // For UI icon display
+        public string? IconUrl { get; set; }
+        public decimal? MonthlyBudgetLimit { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Navigation property
-        public List<Receipt> Receipts { get; set; } = new List<Receipt>();
+        public int? UserId { get; set; }
+        public User? User { get; set; }
+
+        public List<Receipt> Receipts { get; set; } = new();
     }
 }

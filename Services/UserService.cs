@@ -1,70 +1,56 @@
+using Microsoft.EntityFrameworkCore;
 using smart_receipt_api.Models;
-using smart_receipt_api.Repositories;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace smart_receipt_api.Services
 {
     public class UserService : IUserService
     {
-        private readonly IRepository<User> _userRepository;
+        private readonly AppDbContext _context;
 
-        public UserService(IRepository<User> userRepository)
+        public UserService(AppDbContext context)
         {
-            _userRepository = userRepository;
+            _context = context;
         }
 
-        public async Task<User?> RegisterAsync(string username, string password)
+        public async Task<User?> RegisterAsync(string fullName, string email, string password)
         {
-            // Check if user already exists
-            var users = await _userRepository.GetAllAsync();
-            if (users.Any(u => u.Username == username))
+            var normalizedEmail = NormalizeEmail(email);
+
+            if (await _context.Users.AnyAsync(u => u.Email == normalizedEmail))
                 return null;
 
             var user = new User
             {
-                Username = username,
-                PasswordHash = HashPassword(password)
+                FullName = fullName.Trim(),
+                Email = normalizedEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password, workFactor: 11),
+                CreatedAt = DateTime.UtcNow
             };
 
-            await _userRepository.AddAsync(user);
-            await _userRepository.SaveAsync();
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
             return user;
         }
 
-        public async Task<User?> LoginAsync(string username, string password)
+        public async Task<User?> LoginAsync(string email, string password)
         {
-            var users = await _userRepository.GetAllAsync();
-            var user = users.FirstOrDefault(u => u.Username == username);
-            
+            var normalizedEmail = NormalizeEmail(email);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+
             if (user == null)
                 return null;
 
-            if (VerifyPassword(password, user.PasswordHash))
-                return user;
-
-            return null;
+            return BCrypt.Net.BCrypt.Verify(password, user.PasswordHash) ? user : null;
         }
 
-        public async Task<User?> GetUserByIdAsync(int id)
+        public Task<User?> GetUserByIdAsync(int id)
         {
-            return await _userRepository.GetByIdAsync(id);
+            return _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         }
 
-        private string HashPassword(string password)
+        private static string NormalizeEmail(string email)
         {
-            using (var sha256 = SHA256.Create())
-            {
-                var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-                return Convert.ToBase64String(hashedBytes);
-            }
-        }
-
-        private bool VerifyPassword(string password, string hash)
-        {
-            var hashOfInput = HashPassword(password);
-            return hashOfInput.Equals(hash);
+            return email.Trim().ToLowerInvariant();
         }
     }
 }
-

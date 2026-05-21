@@ -1,4 +1,4 @@
-﻿namespace smart_receipt_api.Models
+namespace smart_receipt_api.Models
 {
     public class Receipt
     {
@@ -6,20 +6,18 @@
         public string StoreName { get; set; } = string.Empty;
         public DateTime Date { get; set; }
         public decimal TotalAmount { get; set; }
-        public string? ImagePath { get; set; }
+        public string? PhotoUrl { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // User relationship
         public int UserId { get; set; }
         public User? User { get; set; }
 
-        // Category relationship (optional)
         public int? CategoryId { get; set; }
         public Category? Category { get; set; }
 
-        // Store relationship (optional)
         public int? StoreId { get; set; }
         public Store? Store { get; set; }
 
-        public List<ReceiptItems> Items { get; set; } = new List<ReceiptItems>();
+        public List<ReceiptItem> Items { get; set; } = new();
     }
 }

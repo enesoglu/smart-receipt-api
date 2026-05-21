@@ -9,7 +9,8 @@ namespace smart_receipt_api.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
-    public class StoresController : ControllerBase
+    [Tags("Stores")]
+    public class StoresController : BaseApiController
     {
         private readonly AppDbContext _context;
         private readonly ILogger<StoresController> _logger;
@@ -20,6 +21,8 @@ namespace smart_receipt_api.Controllers
             _logger = logger;
         }
 
+        /// <summary>Lists stores known to the system.</summary>
+        /// <response code="200">Stores were returned.</response>
         [HttpGet]
         public async Task<ActionResult<ApiResponse<List<StoreDto>>>> GetStores()
         {
@@ -40,11 +43,15 @@ namespace smart_receipt_api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Get stores error: {ex.Message}");
-                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred" });
+                _logger.LogError(ex, "Failed to get stores.");
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred." });
             }
         }
 
+        /// <summary>Gets a store by id.</summary>
+        /// <param name="id">Store id.</param>
+        /// <response code="200">The store was returned.</response>
+        /// <response code="404">The store was not found.</response>
         [HttpGet("{id}")]
         public async Task<ActionResult<ApiResponse<StoreDto>>> GetStore(int id)
         {
@@ -52,7 +59,7 @@ namespace smart_receipt_api.Controllers
             {
                 var store = await _context.Stores.FindAsync(id);
                 if (store == null)
-                    return NotFound(new ApiResponse<object> { Success = false, Message = "Store not found" });
+                    return NotFound(new ApiResponse<object> { Success = false, Message = "Store not found." });
 
                 var dto = new StoreDto
                 {
@@ -67,11 +74,14 @@ namespace smart_receipt_api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Get store error: {ex.Message}");
-                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred" });
+                _logger.LogError(ex, "Failed to get store.");
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred." });
             }
         }
 
+        /// <summary>Creates a store.</summary>
+        /// <param name="request">Store fields.</param>
+        /// <response code="201">The store was created.</response>
         [HttpPost]
         public async Task<ActionResult<ApiResponse<StoreDto>>> CreateStore(CreateStoreRequest request)
         {
@@ -102,11 +112,16 @@ namespace smart_receipt_api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Create store error: {ex.Message}");
-                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred" });
+                _logger.LogError(ex, "Failed to create store.");
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred." });
             }
         }
 
+        /// <summary>Updates a store.</summary>
+        /// <param name="id">Store id.</param>
+        /// <param name="request">Updated store fields.</param>
+        /// <response code="200">The store was updated.</response>
+        /// <response code="404">The store was not found.</response>
         [HttpPut("{id}")]
         public async Task<ActionResult<ApiResponse<StoreDto>>> UpdateStore(int id, CreateStoreRequest request)
         {
@@ -114,7 +129,7 @@ namespace smart_receipt_api.Controllers
             {
                 var store = await _context.Stores.FindAsync(id);
                 if (store == null)
-                    return NotFound(new ApiResponse<object> { Success = false, Message = "Store not found" });
+                    return NotFound(new ApiResponse<object> { Success = false, Message = "Store not found." });
 
                 store.Name = request.Name;
                 store.Address = request.Address;
@@ -136,11 +151,15 @@ namespace smart_receipt_api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Update store error: {ex.Message}");
-                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred" });
+                _logger.LogError(ex, "Failed to update store.");
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred." });
             }
         }
 
+        /// <summary>Deletes a store.</summary>
+        /// <param name="id">Store id.</param>
+        /// <response code="200">The store was deleted.</response>
+        /// <response code="404">The store was not found.</response>
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteStore(int id)
         {
@@ -148,17 +167,17 @@ namespace smart_receipt_api.Controllers
             {
                 var store = await _context.Stores.FindAsync(id);
                 if (store == null)
-                    return NotFound(new ApiResponse<object> { Success = false, Message = "Store not found" });
+                    return NotFound(new ApiResponse<object> { Success = false, Message = "Store not found." });
 
                 _context.Stores.Remove(store);
                 await _context.SaveChangesAsync();
 
-                return Ok(new ApiResponse<object> { Success = true, Message = "Store deleted successfully" });
+                return Ok(new ApiResponse<object> { Success = true, Message = "Store deleted." });
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Delete store error: {ex.Message}");
-                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred" });
+                _logger.LogError(ex, "Failed to delete store.");
+                return StatusCode(500, new ApiResponse<object> { Success = false, Message = "An error occurred." });
             }
         }
     }

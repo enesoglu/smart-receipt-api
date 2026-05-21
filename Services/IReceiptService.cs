@@ -6,14 +6,17 @@ namespace smart_receipt_api.Services
     public interface IReceiptService
     {
         Task<IEnumerable<Receipt>> GetUserReceiptsAsync(int userId);
-        Task<Receipt> GetReceiptByIdAsync(int id);
+        Task<Receipt?> GetReceiptByIdAsync(int id);
         Task<Receipt> CreateReceiptAsync(Receipt receipt);
         Task<Receipt> CreateReceiptWithStoreAsync(CreateReceiptRequest request, int userId);
         Task<Receipt> UpdateReceiptAsync(Receipt receipt);
         Task DeleteReceiptAsync(int id);
         Task<IEnumerable<Receipt>> FilterReceiptsByDateAsync(int userId, DateTime startDate, DateTime endDate);
         Task<IEnumerable<Receipt>> FilterReceiptsByStoreAsync(int userId, string storeName);
-        List<ReceiptItems> ParseReceiptItems(string ocrText);
+        Task<IEnumerable<Receipt>> SearchReceiptsAsync(int userId, string? query);
+        Task<List<ItemAggregateDto>> GetTopItemsAsync(int userId, int limit, int? year, int? month);
+        Task<InsightDto> GetInsightAsync(int userId);
+        ScanResultDto BuildScanResult(string rawText);
+        List<ReceiptItem> ParseReceiptItems(string ocrText);
     }
 }
-

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using smart_receipt_api.DTOs;
 using smart_receipt_api.Models;
 using smart_receipt_api.Repositories;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace smart_receipt_api.Services
@@ -19,21 +20,16 @@ namespace smart_receipt_api.Services
 
         public async Task<IEnumerable<Receipt>> GetUserReceiptsAsync(int userId)
         {
-            return await _context.Receipts
-                .Include(r => r.Items)
-                .Include(r => r.Category)
-                .Include(r => r.Store)
+            return await BaseReceiptQuery()
                 .Where(r => r.UserId == userId)
+                .OrderByDescending(r => r.Date)
+                .ThenByDescending(r => r.Id)
                 .ToListAsync();
         }
 
-        public async Task<Receipt> GetReceiptByIdAsync(int id)
+        public Task<Receipt?> GetReceiptByIdAsync(int id)
         {
-            return await _context.Receipts
-                .Include(r => r.Items)
-                .Include(r => r.Category)
-                .Include(r => r.Store)
-                .FirstOrDefaultAsync(r => r.Id == id);
+            return BaseReceiptQuery().FirstOrDefaultAsync(r => r.Id == id);
         }
 
         public async Task<Receipt> CreateReceiptAsync(Receipt receipt)
@@ -45,44 +41,25 @@ namespace smart_receipt_api.Services
 
         public async Task<Receipt> CreateReceiptWithStoreAsync(CreateReceiptRequest request, int userId)
         {
-            // Store handling - find existing or create new
-            Store? store = null;
-            if (!string.IsNullOrEmpty(request.StoreName))
-            {
-                store = await _context.Stores.FirstOrDefaultAsync(s =>
-                    s.Name.ToLower() == request.StoreName.ToLower());
-
-                if (store == null)
-                {
-                    store = new Store { Name = request.StoreName };
-                    _context.Stores.Add(store);
-                    await _context.SaveChangesAsync();
-                }
-            }
+            var store = await GetOrCreateStoreAsync(request.StoreName);
+            var categoryId = await ResolveVisibleCategoryIdAsync(request.CategoryId, userId);
 
             var receipt = new Receipt
             {
                 UserId = userId,
-                StoreName = request.StoreName,
+                StoreName = request.StoreName.Trim(),
                 Date = request.Date,
                 TotalAmount = request.TotalAmount,
-                ImagePath = request.ImagePath,
-                CategoryId = request.CategoryId,
-                StoreId = store?.Id,
-                Items = request.Items.Select(item => new ReceiptItems
-                {
-                    ProductName = item.ProductName,
-                    Price = item.Price,
-                    Quantity = item.Quantity,
-                    UnitPrice = item.UnitPrice,
-                    Barcode = item.Barcode,
-                    Unit = item.Unit
-                }).ToList()
+                PhotoUrl = request.PhotoUrl,
+                CategoryId = categoryId,
+                StoreId = request.StoreId ?? store?.Id,
+                CreatedAt = DateTime.UtcNow,
+                Items = request.Items.Select(MapItemDtoToEntity).ToList()
             };
 
             await _receiptRepository.AddAsync(receipt);
             await _receiptRepository.SaveAsync();
-            return receipt;
+            return (await GetReceiptByIdAsync(receipt.Id)) ?? receipt;
         }
 
         public async Task<Receipt> UpdateReceiptAsync(Receipt receipt)
@@ -98,114 +75,375 @@ namespace smart_receipt_api.Services
 
         public async Task<IEnumerable<Receipt>> FilterReceiptsByDateAsync(int userId, DateTime startDate, DateTime endDate)
         {
-            var receipts = await GetUserReceiptsAsync(userId);
-            return receipts.Where(r => r.Date >= startDate && r.Date <= endDate).ToList();
+            var inclusiveEndDate = endDate.Date.AddDays(1).AddTicks(-1);
+
+            return await BaseReceiptQuery()
+                .Where(r => r.UserId == userId && r.Date >= startDate.Date && r.Date <= inclusiveEndDate)
+                .OrderByDescending(r => r.Date)
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<Receipt>> FilterReceiptsByStoreAsync(int userId, string storeName)
         {
-            var receipts = await GetUserReceiptsAsync(userId);
-            return receipts.Where(r => r.StoreName.Contains(storeName, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (string.IsNullOrWhiteSpace(storeName))
+                return await GetUserReceiptsAsync(userId);
+
+            var normalizedStoreName = storeName.Trim().ToLowerInvariant();
+
+            return await BaseReceiptQuery()
+                .Where(r => r.UserId == userId && r.StoreName.ToLower().Contains(normalizedStoreName))
+                .OrderByDescending(r => r.Date)
+                .ToListAsync();
         }
 
-
-        public List<ReceiptItems> ParseReceiptItems(string ocrText)
+        public async Task<IEnumerable<Receipt>> SearchReceiptsAsync(int userId, string? query)
         {
-            var items = new List<ReceiptItems>();
-            if (string.IsNullOrEmpty(ocrText)) return items;
+            if (string.IsNullOrWhiteSpace(query))
+                return await GetUserReceiptsAsync(userId);
 
-            var lines = ocrText.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrEmpty(l)).ToList();
+            var normalizedQuery = query.Trim().ToLowerInvariant();
 
-            // Pattern to match product lines
-            // Group 1: Barcode (optional digits)
-            // Group 2: Quantity (number with optional comma)
-            // Group 3: Unit (AD or KG)
-            // Group 4: Unit price (number with comma)
-            // The product name follows on same or next line
-            // Total price is after * symbol
+            return await BaseReceiptQuery()
+                .Where(r => r.UserId == userId
+                    && (r.StoreName.ToLower().Contains(normalizedQuery)
+                        || r.Items.Any(i => i.ItemName.ToLower().Contains(normalizedQuery))))
+                .OrderByDescending(r => r.Date)
+                .ToListAsync();
+        }
 
-            var itemPattern = new Regex(@"^(\d+)?\s*(\d+(?:,\d+)?)\s*(AD|PK|KG)\s*[x×]\s*(\d+(?:,\d+)?)", RegexOptions.IgnoreCase);
-            var pricePattern = new Regex(@"\*\s*(\d+(?:,\d+)?)");
+        public async Task<List<ItemAggregateDto>> GetTopItemsAsync(int userId, int limit, int? year, int? month)
+        {
+            var clampedLimit = Math.Clamp(limit, 1, 50);
+            var query = BaseReceiptQuery().Where(r => r.UserId == userId);
 
-            for (int i = 0; i < lines.Count; i++)
+            if (year.HasValue && month.HasValue && month.Value is >= 1 and <= 12)
+            {
+                var startDate = new DateTime(year.Value, month.Value, 1);
+                var endDate = startDate.AddMonths(1).AddTicks(-1);
+                query = query.Where(r => r.Date >= startDate && r.Date <= endDate);
+            }
+
+            var receipts = await query.ToListAsync();
+
+            return receipts
+                .SelectMany(r => r.Items)
+                .Where(i => !string.IsNullOrWhiteSpace(i.ItemName))
+                .GroupBy(i => i.ItemName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new ItemAggregateDto
+                {
+                    ItemName = g.Key,
+                    TotalSpent = g.Sum(i => i.Price),
+                    OccurrenceCount = g.Count(),
+                    AverageUnitPrice = Math.Round(g.Average(i => i.UnitPrice > 0 ? i.UnitPrice : i.Price), 2)
+                })
+                .OrderByDescending(i => i.TotalSpent)
+                .ThenBy(i => i.ItemName)
+                .Take(clampedLimit)
+                .ToList();
+        }
+
+        public async Task<InsightDto> GetInsightAsync(int userId)
+        {
+            var startDate = DateTime.UtcNow.AddDays(-30);
+            var receipts = await BaseReceiptQuery()
+                .Where(r => r.UserId == userId && r.Date >= startDate)
+                .ToListAsync();
+
+            var topItem = receipts
+                .SelectMany(r => r.Items)
+                .Where(i => !string.IsNullOrWhiteSpace(i.ItemName))
+                .GroupBy(i => i.ItemName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new { ItemName = g.Key, TotalSpent = g.Sum(i => i.Price) })
+                .OrderByDescending(i => i.TotalSpent)
+                .FirstOrDefault();
+
+            if (topItem == null)
+                return new InsightDto { Message = "No spending recorded in the last 30 days yet." };
+
+            return new InsightDto
+            {
+                Message = $"In the last 30 days, you spent the most on {topItem.ItemName} ({FormatTry(topItem.TotalSpent)})."
+            };
+        }
+
+        public ScanResultDto BuildScanResult(string rawText)
+        {
+            var items = ParseReceiptItems(rawText)
+                .Select(MapItemEntityToDto)
+                .ToList();
+
+            return new ScanResultDto
+            {
+                RawText = rawText,
+                StoreName = GuessStoreName(rawText),
+                Date = GuessDate(rawText),
+                TotalAmount = GuessTotalAmount(rawText),
+                Items = items
+            };
+        }
+
+        public List<ReceiptItem> ParseReceiptItems(string ocrText)
+        {
+            var items = new List<ReceiptItem>();
+            if (string.IsNullOrWhiteSpace(ocrText))
+                return items;
+
+            var lines = ocrText
+                .Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+
+            var itemPattern = new Regex(@"^(\d+)?\s*(\d+(?:[,.]\d+)?)\s*(AD|PK|KG)\s*[\u00D7xX]\s*(\d+(?:[,.]\d+)?)", RegexOptions.IgnoreCase);
+            var pricePattern = new Regex(@"\*\s*(\d+(?:[,.]\d+)?)");
+
+            for (var i = 0; i < lines.Count; i++)
             {
                 var line = lines[i];
                 var match = itemPattern.Match(line);
 
-                if (match.Success)
+                if (!match.Success)
+                    continue;
+
+                var barcode = match.Groups[1].Success ? match.Groups[1].Value : null;
+                var quantity = ParseAmount(match.Groups[2].Value) ?? 1m;
+                var unit = match.Groups[3].Value.ToUpperInvariant();
+                var unitPrice = ParseAmount(match.Groups[4].Value) ?? 0m;
+                var itemName = string.Empty;
+
+                if (i + 1 < lines.Count)
                 {
-                    var barcode = match.Groups[1].Success ? match.Groups[1].Value : null;
-                    var quantityStr = match.Groups[2].Value.Replace(',', '.');
-                    var unit = match.Groups[3].Value.ToUpper();
-                    var unitPriceStr = match.Groups[4].Value.Replace(',', '.');
-
-                    decimal.TryParse(quantityStr, System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture, out decimal quantity);
-                    decimal.TryParse(unitPriceStr, System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture, out decimal unitPrice);
-
-                    // Find product name - usually on the same or next line after the pattern
-                    string productName = "";
-
-                    // Check next line for product name (usually uppercase)
-                    if (i + 1 < lines.Count)
+                    var nextLine = lines[i + 1];
+                    if (!Regex.IsMatch(nextLine, @"^[\d\*]") && !ContainsAny(nextLine, "TOPLAM", "TOTAL", "KDV"))
                     {
-                        var nextLine = lines[i + 1];
-                        // Product name line typically doesn't start with numbers or special chars
-                        if (!Regex.IsMatch(nextLine, @"^[\d\*]") && !nextLine.Contains("Toplam") && !nextLine.Contains("KDV"))
-                        {
-                            productName = nextLine.Split('%')[0].Trim(); // Remove tax info
-                            i++; // Skip this line in next iteration
-                        }
+                        itemName = nextLine.Split('%')[0].Trim();
+                        i++;
                     }
+                }
 
-                    // If no product name found, extract from current line
-                    if (string.IsNullOrEmpty(productName))
-                    {
-                        var afterMatch = line.Substring(match.Index + match.Length);
-                        productName = afterMatch.Split('%')[0].Trim();
-                    }
+                if (string.IsNullOrWhiteSpace(itemName))
+                {
+                    var afterMatch = line[(match.Index + match.Length)..];
+                    itemName = afterMatch.Split('%')[0].Trim();
+                }
 
-                    // Find total price (after *)
-                    decimal totalPrice = 0;
-                    var priceMatch = pricePattern.Match(line);
-                    if (!priceMatch.Success && i + 1 < lines.Count)
-                    {
-                        priceMatch = pricePattern.Match(lines[i + 1]);
-                    }
+                var priceMatch = pricePattern.Match(line);
+                if (!priceMatch.Success && i + 1 < lines.Count)
+                    priceMatch = pricePattern.Match(lines[i + 1]);
 
-                    if (priceMatch.Success)
-                    {
-                        var priceStr = priceMatch.Groups[1].Value.Replace(',', '.');
-                        decimal.TryParse(priceStr, System.Globalization.NumberStyles.Any,
-                            System.Globalization.CultureInfo.InvariantCulture, out totalPrice);
-                    }
-                    else
-                    {
-                        // Calculate from quantity and unit price
-                        totalPrice = quantity * unitPrice;
-                    }
+                var totalPrice = priceMatch.Success
+                    ? ParseAmount(priceMatch.Groups[1].Value) ?? 0m
+                    : quantity * unitPrice;
 
-                    // Clean up product name
-                    productName = Regex.Replace(productName, @"-[A-Z]$", "").Trim(); // Remove "-B" suffix
+                itemName = Regex.Replace(itemName, @"-[A-Z]$", string.Empty).Trim();
 
-                    if (!string.IsNullOrEmpty(productName) && totalPrice > 0)
+                if (!string.IsNullOrWhiteSpace(itemName) && totalPrice > 0)
+                {
+                    items.Add(new ReceiptItem
                     {
-                        items.Add(new ReceiptItems
-                        {
-                            ProductName = productName,
-                            Price = totalPrice,
-                            Quantity = quantity,
-                            UnitPrice = unitPrice,
-                            Barcode = barcode,
-                            Unit = unit == "PK" ? "AD" : unit
-                        });
-                    }
+                        ItemName = itemName,
+                        Price = totalPrice,
+                        Quantity = quantity,
+                        UnitPrice = unitPrice,
+                        Barcode = barcode,
+                        Unit = unit == "PK" ? "AD" : unit
+                    });
                 }
             }
 
             return items;
         }
+
+        private IQueryable<Receipt> BaseReceiptQuery()
+        {
+            return _context.Receipts
+                .Include(r => r.Items)
+                .Include(r => r.Category)
+                .Include(r => r.Store);
+        }
+
+        private async Task<Store?> GetOrCreateStoreAsync(string storeName)
+        {
+            if (string.IsNullOrWhiteSpace(storeName))
+                return null;
+
+            var trimmedStoreName = storeName.Trim();
+            var normalizedStoreName = trimmedStoreName.ToLowerInvariant();
+
+            var store = await _context.Stores
+                .FirstOrDefaultAsync(s => s.Name.ToLower() == normalizedStoreName);
+
+            if (store != null)
+                return store;
+
+            store = new Store { Name = trimmedStoreName };
+            _context.Stores.Add(store);
+            await _context.SaveChangesAsync();
+            return store;
+        }
+
+        private async Task<int?> ResolveVisibleCategoryIdAsync(int? categoryId, int userId)
+        {
+            if (categoryId == null)
+                return null;
+
+            var isVisible = await _context.Categories
+                .AnyAsync(c => c.Id == categoryId && (c.UserId == null || c.UserId == userId));
+
+            return isVisible ? categoryId : null;
+        }
+
+        private static ReceiptItem MapItemDtoToEntity(ReceiptItemDto item)
+        {
+            return new ReceiptItem
+            {
+                ItemName = item.ItemName.Trim(),
+                Price = item.Price,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                Barcode = string.IsNullOrWhiteSpace(item.Barcode) ? null : item.Barcode.Trim(),
+                Unit = string.IsNullOrWhiteSpace(item.Unit) ? null : item.Unit.Trim()
+            };
+        }
+
+        private static ReceiptItemDto MapItemEntityToDto(ReceiptItem item)
+        {
+            return new ReceiptItemDto
+            {
+                Id = item.Id,
+                ItemName = item.ItemName,
+                Price = item.Price,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                Barcode = item.Barcode,
+                Unit = item.Unit
+            };
+        }
+
+        private static string? GuessStoreName(string rawText)
+        {
+            var candidates = rawText
+                .Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 3
+                    && Regex.IsMatch(l, "[A-Za-z]")
+                    && !Regex.IsMatch(l, @"^\d")
+                    && !ContainsAny(l, "TOPLAM", "TOTAL", "TUTAR", "FIS", "FATURA"))
+                .Take(3)
+                .ToList();
+
+            return candidates
+                .OrderByDescending(c => c.Count(char.IsUpper))
+                .ThenByDescending(c => c.Length)
+                .FirstOrDefault();
+        }
+
+        private static DateTime? GuessDate(string rawText)
+        {
+            var candidates = new List<DateTime>();
+            var now = DateTime.UtcNow.Date;
+
+            foreach (Match match in Regex.Matches(rawText, @"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})"))
+            {
+                var day = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                var month = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                var year = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                if (year < 100)
+                    year += 2000;
+
+                if (TryCreateDate(year, month, day, out var date) && date.Date <= now)
+                    candidates.Add(date);
+            }
+
+            foreach (Match match in Regex.Matches(rawText, @"(\d{4})-(\d{2})-(\d{2})"))
+            {
+                var year = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                var month = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                var day = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+
+                if (TryCreateDate(year, month, day, out var date) && date.Date <= now)
+                    candidates.Add(date);
+            }
+
+            var best = candidates
+                .OrderByDescending(d => d)
+                .FirstOrDefault();
+
+            return best == default ? null : best;
+        }
+
+        private static decimal? GuessTotalAmount(string rawText)
+        {
+            foreach (var line in rawText.Split('\n').Select(l => l.Trim()))
+            {
+                if (!ContainsAny(line, "TOPLAM", "TOTAL", "TUTAR"))
+                    continue;
+
+                var amount = Regex.Matches(line, @"\d+(?:[.,]\d{2})?")
+                    .Select(m => ParseAmount(m.Value))
+                    .Where(v => v.HasValue)
+                    .Select(v => v!.Value)
+                    .DefaultIfEmpty()
+                    .Max();
+
+                if (amount > 0)
+                    return amount;
+            }
+
+            var maxAmount = Regex.Matches(rawText, @"\d+(?:[.,]\d{2})")
+                .Select(m => ParseAmount(m.Value))
+                .Where(v => v.HasValue)
+                .Select(v => v!.Value)
+                .DefaultIfEmpty()
+                .Max();
+
+            return maxAmount > 0 ? maxAmount : null;
+        }
+
+        private static bool TryCreateDate(int year, int month, int day, out DateTime date)
+        {
+            date = default;
+            if (year < 2000 || month is < 1 or > 12 || day is < 1 or > 31)
+                return false;
+
+            try
+            {
+                date = new DateTime(year, month, day);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static decimal? ParseAmount(string value)
+        {
+            var normalized = value.Trim();
+            if (normalized.Contains('.') && normalized.Contains(','))
+            {
+                normalized = normalized.LastIndexOf(",", StringComparison.Ordinal) > normalized.LastIndexOf(".", StringComparison.Ordinal)
+                    ? normalized.Replace(".", string.Empty).Replace(',', '.')
+                    : normalized.Replace(",", string.Empty);
+            }
+            else
+            {
+                normalized = normalized.Replace(',', '.');
+            }
+
+            return decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount)
+                ? amount
+                : null;
+        }
+
+        private static bool ContainsAny(string value, params string[] terms)
+        {
+            return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string FormatTry(decimal amount)
+        {
+            return $"\u20BA {amount:0.00}";
+        }
     }
 }
-

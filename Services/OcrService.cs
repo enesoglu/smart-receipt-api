@@ -21,7 +21,7 @@ namespace smart_receipt_api.Services
 
             try
             {
-                // Azure Vision API endpoint ve key
+                // Azure Vision API endpoint and key.
                 var endpoint = _configuration["AzureVision:Endpoint"];
                 var apiKey = _configuration["AzureVision:ApiKey"];
 
@@ -49,7 +49,7 @@ namespace smart_receipt_api.Services
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError($"Azure OCR API error: {response.StatusCode} - {errorContent}");
+                    _logger.LogError("Azure OCR API error: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
                     result["error"] = $"OCR API error: {response.StatusCode}";
                     return result;
                 }
@@ -70,13 +70,13 @@ namespace smart_receipt_api.Services
                 result["rawText"] = rawText;
                 result["status"] = "success";
 
-                _logger.LogInformation($"OCR completed. Raw text length: {rawText.Length}");
+                _logger.LogInformation("OCR completed. Raw text length: {Length}", rawText.Length);
 
                 return result;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"OCR Error: {ex.Message}");
+                _logger.LogError(ex, "OCR processing failed.");
                 result["error"] = "OCR processing failed";
                 return result;
             }
@@ -149,7 +149,7 @@ namespace smart_receipt_api.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error extracting text from OCR result: {ex.Message}");
+                _logger.LogError(ex, "Failed to extract text from OCR result.");
             }
 
             return string.Join("\n", textLines);

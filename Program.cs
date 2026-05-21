@@ -1,25 +1,31 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuestPDF.Infrastructure;
 using smart_receipt_api;
 using smart_receipt_api.Repositories;
 using smart_receipt_api.Services;
+using System.Reflection;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+QuestPDF.Settings.License = LicenseType.Community;
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Dependency Injection
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<IBudgetService, BudgetService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IOcrService, OcrService>();
 builder.Services.AddHttpClient<IOcrService, OcrService>();
 
-// JWT Configuration
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = Encoding.ASCII.GetBytes(jwtSettings["SecretKey"] ?? "your-secret-key-must-be-at-least-32-characters-long-here");
+var issuer = jwtSettings["Issuer"] ?? "smart-receipt-api";
+var audience = jwtSettings["Audience"] ?? "smart-receipt-users";
+var secretKey = Encoding.ASCII.GetBytes(jwtSettings["SecretKey"] ?? "REPLACE_WITH_AT_LEAST_32_CHAR_RANDOM_SECRET");
 
 builder.Services
     .AddAuthentication("Bearer")
@@ -29,8 +35,10 @@ builder.Services
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(secretKey),
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = true,
+            ValidIssuer = issuer,
+            ValidateAudience = true,
+            ValidAudience = audience,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
@@ -40,14 +48,19 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+});
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowWebApp",
-        builder =>
+        policy =>
         {
-            builder
+            policy
                 .WithOrigins(
                     "http://localhost:5007",
                     "http://localhost:5001",
@@ -61,11 +74,10 @@ builder.Services.AddCors(options =>
                 .AllowCredentials();
         });
 
-    // Mobil uygulamalar için daha esnek policy
     options.AddPolicy("AllowMobile",
-        builder =>
+        policy =>
         {
-            builder
+            policy
                 .AllowAnyOrigin()
                 .AllowAnyMethod()
                 .AllowAnyHeader();
@@ -74,7 +86,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Başlangıçta pending migration'ları otomatik uygula (tablo yoksa oluşturur)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -87,9 +98,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// app.UseHttpsRedirection(); // Disabled for mobile dev (self-signed cert causes fetch to fail)
-
 app.UseCors("AllowMobile");
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
