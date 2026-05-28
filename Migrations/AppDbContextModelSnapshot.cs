@@ -250,7 +250,7 @@ namespace smart_receipt_api.Migrations
                     b.HasOne("smart_receipt_api.Models.Category", "Category")
                         .WithMany("Receipts")
                         .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("smart_receipt_api.Models.Store", "Store")
                         .WithMany("Receipts")

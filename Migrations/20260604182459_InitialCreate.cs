@@ -90,8 +90,7 @@ namespace smart_receipt_api.Migrations
                         name: "FK_Receipts_Categories_CategoryId",
                         column: x => x.CategoryId,
                         principalTable: "Categories",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_Receipts_Stores_StoreId",
                         column: x => x.StoreId,

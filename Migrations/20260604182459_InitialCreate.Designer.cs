@@ -12,7 +12,7 @@ using smart_receipt_api;
 namespace smart_receipt_api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260604175954_InitialCreate")]
+    [Migration("20260604182459_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -253,7 +253,7 @@ namespace smart_receipt_api.Migrations
                     b.HasOne("smart_receipt_api.Models.Category", "Category")
                         .WithMany("Receipts")
                         .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("smart_receipt_api.Models.Store", "Store")
                         .WithMany("Receipts")

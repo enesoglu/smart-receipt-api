@@ -64,6 +64,10 @@ namespace smart_receipt_api.Services
             if (category == null || category.UserId == null)
                 return false;
 
+            await _context.Receipts
+                .Where(r => r.UserId == userId && r.CategoryId == id)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(r => r.CategoryId, (int?)null));
+
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();
             return true;

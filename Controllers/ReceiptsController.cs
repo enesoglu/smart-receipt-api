@@ -434,7 +434,7 @@ namespace smart_receipt_api.Controllers
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ScanResultDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<ScanResultDto>), StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult<ApiResponse<ScanResultDto>>> ScanReceipt([FromForm] IFormFile file)
+        public async Task<ActionResult<ApiResponse<ScanResultDto>>> ScanReceipt(IFormFile file)
         {
             try
             {
@@ -472,7 +472,7 @@ namespace smart_receipt_api.Controllers
         [ProducesResponseType(typeof(ApiResponse<ReceiptPhotoDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiResponse<ReceiptPhotoDto>), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiResponse<ReceiptPhotoDto>), StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<ApiResponse<ReceiptPhotoDto>>> UploadPhoto(int id, [FromForm] IFormFile file)
+        public async Task<ActionResult<ApiResponse<ReceiptPhotoDto>>> UploadPhoto(int id, IFormFile file)
         {
             try
             {

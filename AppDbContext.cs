@@ -63,7 +63,7 @@ namespace smart_receipt_api
                 .HasOne(r => r.Category)
                 .WithMany(c => c.Receipts)
                 .HasForeignKey(r => r.CategoryId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.NoAction);
 
             modelBuilder.Entity<Receipt>()
                 .HasOne(r => r.Store)
