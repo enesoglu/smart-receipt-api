@@ -426,10 +426,10 @@ namespace smart_receipt_api.Controllers
             }
         }
 
-        /// <summary>Scans a receipt image with OCR and returns typed parse guesses.</summary>
+        /// <summary>Extracts a receipt's merchant, date, total amount and items using Azure AI Document Intelligence (prebuilt-receipt model). Falls back to text heuristics when the model cannot identify a receipt.</summary>
         /// <param name="file">Receipt image file.</param>
         /// <response code="200">OCR data was returned.</response>
-        /// <response code="400">The file is missing or OCR failed.</response>
+        /// <response code="400">The image file is missing.</response>
         [HttpPost("scan")]
         [Consumes("multipart/form-data")]
         [ProducesResponseType(typeof(ApiResponse<ScanResultDto>), StatusCodes.Status200OK)]
