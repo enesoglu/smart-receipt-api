@@ -19,8 +19,7 @@ builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddScoped<IReportService, ReportService>();
-builder.Services.AddScoped<IOcrService, OcrService>();
-builder.Services.AddHttpClient<IOcrService, OcrService>();
+builder.Services.AddScoped<IOcrService, DocumentIntelligenceOcrService>();
 builder.Services.Configure<DocumentIntelligenceOptions>(
     builder.Configuration.GetSection("DocumentIntelligence"));
 

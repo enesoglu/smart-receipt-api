@@ -166,6 +166,9 @@ namespace smart_receipt_api.Services
             };
         }
 
+        /// <summary>
+        /// Builds a scan result from raw OCR text when Document Intelligence cannot identify a receipt document.
+        /// </summary>
         public ScanResultDto BuildScanResult(string rawText)
         {
             var items = ParseReceiptItems(rawText)
