@@ -21,6 +21,8 @@ builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IOcrService, OcrService>();
 builder.Services.AddHttpClient<IOcrService, OcrService>();
+builder.Services.Configure<DocumentIntelligenceOptions>(
+    builder.Configuration.GetSection("DocumentIntelligence"));
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var issuer = jwtSettings["Issuer"] ?? "smart-receipt-api";
