@@ -445,13 +445,7 @@ namespace smart_receipt_api.Controllers
                 if (file == null || file.Length == 0)
                     return BadRequest(new ApiResponse<ScanResultDto> { Success = false, Message = "Image file is required." });
 
-                var extractedData = await _ocrService.ExtractReceiptDataAsync(file);
-                if (extractedData.TryGetValue("error", out var error))
-                    return BadRequest(new ApiResponse<ScanResultDto> { Success = false, Message = error });
-
-                var rawText = extractedData.TryGetValue("rawText", out var text) ? text : string.Empty;
-                var result = _receiptService.BuildScanResult(rawText);
-
+                var result = await _ocrService.ScanReceiptAsync(file);
                 return Ok(new ApiResponse<ScanResultDto> { Success = true, Data = result });
             }
             catch (Exception ex)

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using smart_receipt_api.DTOs;
 
 namespace smart_receipt_api.Services
 {
@@ -6,16 +7,31 @@ namespace smart_receipt_api.Services
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
+        private readonly IReceiptService _receiptService;
         private readonly ILogger<OcrService> _logger;
 
-        public OcrService(HttpClient httpClient, IConfiguration configuration, ILogger<OcrService> logger)
+        public OcrService(
+            HttpClient httpClient,
+            IConfiguration configuration,
+            IReceiptService receiptService,
+            ILogger<OcrService> logger)
         {
             _httpClient = httpClient;
             _configuration = configuration;
+            _receiptService = receiptService;
             _logger = logger;
         }
 
-        public async Task<Dictionary<string, string>> ExtractReceiptDataAsync(IFormFile imageFile)
+        public async Task<ScanResultDto> ScanReceiptAsync(IFormFile imageFile)
+        {
+            var extractedData = await ExtractReceiptDataAsync(imageFile);
+            if (!extractedData.TryGetValue("rawText", out var rawText))
+                return new ScanResultDto { RawText = string.Empty };
+
+            return _receiptService.BuildScanResult(rawText);
+        }
+
+        private async Task<Dictionary<string, string>> ExtractReceiptDataAsync(IFormFile imageFile)
         {
             var result = new Dictionary<string, string>();
 
